@@ -90,7 +90,7 @@ class APIResource(object):
     """
 
     def __init__(
-        self, endpoint, name_or_id, lazy_load=False, force_lookup=False, custom=None
+        self, endpoint, name_or_id, lazy_load=False, force_lookup=False, custom=None, ignore=None
     ):
 
         name, id_ = name_id_convert(endpoint, name_or_id)
@@ -109,6 +109,8 @@ class APIResource(object):
         if not lazy_load:
             self._load()
             self.__loaded = True
+            
+        self.__ignore = ignore or None
 
     def __getattr__(self, attr):
         """Modified method to auto-load the data when it is needed.
@@ -147,6 +149,9 @@ class APIResource(object):
 
         # Make our custom objects from the data.
         for key, val in data.items():
+            if key in self.__ignore:
+                continue
+            
             if key in self._custom:
                 val = get_data(*self._custom[key](val))
 
