@@ -26,7 +26,7 @@ def save(data, endpoint, resource_id=None, subresource=None):
             cache[uri] = data
     except OSError as error:
         if error.errno == 11:  # Cache open by another person/program
-            # print('Cache unavailable, skipping save')
+            print('Cache unavailable, skipping save')
             pass
         else:
             raise error
@@ -58,7 +58,7 @@ def load(endpoint, resource_id=None, subresource=None):
     except OSError as error:
         if error.errno == 11:
             # Cache open by another person/program
-            # print('Cache unavailable, skipping load')
+            print('Cache unavailable, skipping load')
             raise KeyError("Cache could not be opened.")
         else:
             raise

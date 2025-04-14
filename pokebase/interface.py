@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import functools
+
 from .api import get_data, get_sprite
 from .common import api_url_build, sprite_url_build
 
 
-def _make_obj(obj):
+def _make_obj(obj, ignore=None):
     """Takes an object and returns a corresponding API class.
 
     The names and values of the data will match exactly with those found
@@ -30,15 +32,14 @@ def _make_obj(obj):
             url = obj["url"]
             id_ = int(url.split("/")[-2])  # ID of the data.
             endpoint = url.split("/")[-3]  # Where the data is located.
-            return APIResource(endpoint, id_, lazy_load=True)
+            return APIResource(endpoint, id_, lazy_load=True, ignore=ignore)
         if all(k in obj for k in ("other", "back_default")):
             obj = change_sprite_key(obj)  # Change hyphens in sprite keys to underscores
-
-        return APIMetadata(obj)
+        return APIMetadata(obj, ignore)
 
     return obj
 
-
+@functools.cache
 def name_id_convert(endpoint, name_or_id):
     if isinstance(name_or_id, int):
         id_ = name_or_id
@@ -53,19 +54,22 @@ def name_id_convert(endpoint, name_or_id):
 
     return name, id_
 
-
+@functools.cache
 def _convert_id_to_name(endpoint, id_):
     resource_data = get_data(endpoint)["results"]
 
+    val = str(id_)
     for resource in resource_data:
-        if resource["url"].split("/")[-2] == str(id_):
+        url = resource["url"].rstrip('/')
+        i = url.rindex('/')
+        if url[i+1:] == val:
 
             # Return the matching name, or id_ if it doesn't exsist.
-            return resource.get("name", str(id_))
+            return resource.get("name", val)
 
     return None
 
-
+@functools.cache
 def _convert_name_to_id(endpoint, name):
     resource_data = get_data(endpoint)["results"]
 
@@ -90,10 +94,11 @@ class APIResource(object):
     """
 
     def __init__(
-        self, endpoint, name_or_id, lazy_load=False, force_lookup=False, custom=None
+        self, endpoint, name_or_id, lazy_load=False, force_lookup=False, custom=None, ignore=None
     ):
-
+        self._ignore = ignore or dict()
         name, id_ = name_id_convert(endpoint, name_or_id)
+
         url = api_url_build(endpoint, id_)
 
         self.__dict__.update({"name": name, "endpoint": endpoint, "id_": id_, "url": url})
@@ -109,6 +114,7 @@ class APIResource(object):
         if not lazy_load:
             self._load()
             self.__loaded = True
+            
 
     def __getattr__(self, attr):
         """Modified method to auto-load the data when it is needed.
@@ -117,6 +123,9 @@ class APIResource(object):
         for the requested attribute. If it is not found, AttributeError is
         raised.
         """
+        
+        if attr.startswith('_'):
+            return self.__getattribute__(attr)
 
         if not self.__loaded:
             self._load()
@@ -142,19 +151,21 @@ class APIResource(object):
 
         :return None
         """
-
         data = get_data(self.endpoint, self.id_, force_lookup=self.__force_lookup)
 
         # Make our custom objects from the data.
         for key, val in data.items():
+            if key in self._ignore:
+                continue
+
             if key in self._custom:
                 val = get_data(*self._custom[key](val))
 
             if isinstance(val, dict):
-                data[key] = _make_obj(val)
+                data[key] = _make_obj(val, self._ignore)
 
             elif isinstance(val, list):
-                data[key] = [_make_obj(i) for i in val]
+                data[key] = [_make_obj(i, self._ignore) for i in val]
 
         self.__dict__.update(data)
 
@@ -218,15 +229,16 @@ class APIMetadata(object):
     https://pokeapi.co/docsv2/#common-models
     """
 
-    def __init__(self, data):
-
+    def __init__(self, data, ignore=None):
         for key, val in data.items():
+            if ignore and (key in ignore):
+                continue
 
             if isinstance(val, dict):
-                data[key] = _make_obj(val)
+                data[key] = _make_obj(val, ignore)
 
             if isinstance(val, list):
-                data[key] = [_make_obj(i) for i in val]
+                data[key] = [_make_obj(i, ignore) for i in val]
 
         self.__dict__.update(data)
 
